@@ -1,8 +1,6 @@
 # gostc
 
-gostc is a Go [StatsD](https://github.com/etsy/statsd/) client. It is specifically designed to work with
-[gost](https://github.com/cespare/gost): it doesn't support delta gauge values and it includes first-class
-support for [counter forwarding](https://github.com/cespare/gost#counter-forwarding).
+gostc is a Go [StatsD](https://github.com/etsy/statsd/)/[gost](https://github.com/cespare/gost/) client.
 
 ## Installation
 
