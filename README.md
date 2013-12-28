@@ -4,14 +4,27 @@ gostc is a Go [StatsD](https://github.com/etsy/statsd/) client. It is specifical
 [gost](https://github.com/cespare/gost): it doesn't support delta gauge values and it includes first-class
 support for [counter forwarding](https://github.com/cespare/gost#counter-forwarding).
 
-## Other implementations
+## Installation
 
-* [github.com/peterbourgon/g2s](https://github.com/peterbourgon/g2s)
-* [github.com/cactus/go-statsd-client](https://github.com/cactus/go-statsd-client)
+    go get github.com/cespare/gostc
 
-Compared with these, gostc tries to:
+## Usage
 
-* Support [gost](https://github.com/cespare/gost) features
-* Support most StatsD features, including sending multiple stats in a single UDP packet
-* Add minimal overhead to your program by being very fast
-* Avoid over-abstraction or solving any problems that haven't presented themselves
+Quick example:
+
+``` go
+client, err := gostc.Dial("localhost:8125")
+if err != nil {
+  panic(err)
+}
+
+// Users will typically ignore the return errors of gostc methods as statsd
+// is a best-effort service in most software.
+client.Count("foobar", 1, 1)
+client.Inc("foobar") // Same as above
+t := time.Now()
+time.Sleep(time.Second)
+client.Time("blah", time.Since(t))
+```
+
+See full package documentation on [godoc.org](http://godoc.org/github.com/cespare/gostc).

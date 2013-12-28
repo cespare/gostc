@@ -1,3 +1,6 @@
+// Package gostc implemenents a StatsD/gost client.
+//
+// This package performs minimal input validation, leaving that to the gost server.
 package gostc
 
 import (
