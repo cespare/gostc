@@ -162,8 +162,27 @@ func (c *Client) Count(key string, delta, samplingRate float64) error {
 	return c.send(msg)
 }
 
+// inc does count(key, 1, samplingRate). strconv's float formatting is actually quite (relatively) slow, so
+// special-casing 1 makes inc a lot faster than the more general Count.
+func (c *Client) inc(key string, p float64) error {
+	msg := make([]byte, len(key), len(key)+4)
+	copy(msg, key)
+	msg = append(msg, []byte(":1|c")...)
+	if p != 1 {
+		msg = append(msg, '@')
+		msg = strconv.AppendFloat(msg, p, 'f', -1, 64)
+	}
+	if c.buffered {
+		c.incoming <- msg
+		return nil
+	}
+	return c.send(msg)
+}
+
 // Inc submits a count with delta and sampling rate equal to 1.
-func (c *Client) Inc(key string) error { return c.Count(key, 1, 1) }
+func (c *Client) Inc(key string) error {
+	return c.inc(key, 1)
+}
 
 var randFloat = rand.Float64
 
@@ -186,7 +205,7 @@ func (c *Client) IncProb(key string, p float64) error {
 	if randFloat() >= p {
 		return nil
 	}
-	return c.Count(key, 1, p)
+	return c.inc(key, p)
 }
 
 // Time submits a statsd timer message.

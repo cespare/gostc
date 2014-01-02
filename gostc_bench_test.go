@@ -2,6 +2,7 @@ package gostc
 
 import (
 	"io/ioutil"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -64,5 +65,23 @@ func BenchmarkSet(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		c.Set("foo.bar", []byte("hello world"))
+	}
+}
+
+func BenchmarkCountProb(b *testing.B) {
+	rand.Seed(0)
+	c := NewBenchClient()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c.CountProb("foo.bar", 123, 0.1)
+	}
+}
+
+func BenchmarkIncProb(b *testing.B) {
+	rand.Seed(0)
+	c := NewBenchClient()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c.IncProb("foo.bar", 0.1)
 	}
 }
