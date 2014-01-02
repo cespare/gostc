@@ -5,6 +5,7 @@ package gostc
 
 import (
 	"errors"
+	"io"
 	"math/rand"
 	"net"
 	"strconv"
@@ -13,11 +14,15 @@ import (
 
 // A Client is a StatsD/gost client which has a UDP connection.
 type Client struct {
-	c *net.UDPConn
+	c        io.WriteCloser
+	buffered bool
+	// These are only are used for buffered clients
+	incoming chan []byte
+	quit     chan chan bool
 }
 
-// Dial creates a new Client with the given UDP address.
-func Dial(addr string) (*Client, error) {
+// NewClient creates a client with the given UDP address.
+func NewClient(addr string) (*Client, error) {
 	u, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, err
@@ -33,9 +38,104 @@ func Dial(addr string) (*Client, error) {
 	return client, nil
 }
 
+// NewBufferedClient creates a client with the given UDP address that can buffer messages and sends them
+// together in patches (separated by newlines, per the statsd protocol). Messages are formatted and sent to a
+// single sending goroutine via a buffered channel. This has the effect of offloading the CPU and clock time
+// of sending the messages from the calling goroutine, as well as possibly increasing efficiency by reducing
+// the volume of UDP packets sent.
+//
+// A buffered Client may or may not change (improve, degrade) performance in your particular scenario. Default
+// to using a normal client (via NewClient) unless gostc performance is a measurable bottleneck, and then see
+// if a buffered client helps (and keep measuring).
+//
+// The three parameters queueSize, maxPacketBytes, and minFlush tune the buffered channel size, maximum single
+// packet size, and minimum time between flushes. Message are buffered until maxPacketBytes is reached or
+// until some time as passed (no more than minFlush). Use NewDefaultBufferedClient for reasonable defaults.
+//
+// Note that a buffered client cannot report UDP errors (it will silently fail).
+func NewBufferedClient(addr string, queueSize int, maxPacketBytes int, minFlush time.Duration) (*Client, error) {
+	c, err := NewClient(addr)
+	if err != nil {
+		return nil, err
+	}
+	c.buffered = true
+	c.incoming = make(chan []byte, queueSize)
+	c.quit = make(chan chan bool)
+	go c.bufferAndSend(maxPacketBytes, minFlush)
+	return c, nil
+}
+
+const (
+	// 100 * DefaultMaxPacketBytes = 10KB, as a lower bound on memory usage.
+	DefaultQueueSize = 100
+	// 1/10th of gost's default max, and 1k packets seem to generally work for Linux local UDP.
+	DefaultMaxPacketBytes = 1000
+	DefaultMinFlush       = time.Second
+)
+
+// NewDefaultBufferedClient calls NewBufferedClient with tuning parameters queueSize, maxPacketBytes, and
+// minFlush set to DefaultQueueSize, DefaultMaxPacketBytes, and DefaultMinFlush, respectively.
+func NewDefaultBufferedClient(addr string) (*Client, error) {
+	return NewBufferedClient(addr, DefaultQueueSize, DefaultMaxPacketBytes, DefaultMinFlush)
+}
+
 func (c *Client) send(b []byte) error {
 	_, err := c.c.Write(b)
 	return err
+}
+
+func (c *Client) bufferAndSend(maxPacketBytes int, minFlush time.Duration) {
+	timer := time.NewTimer(minFlush)
+	buf := make([]byte, 0, maxPacketBytes)
+	for {
+		select {
+		case <-timer.C:
+			if len(buf) > 0 {
+				c.send(buf)
+				buf = buf[:0]
+			}
+			timer.Reset(minFlush)
+		case msg := <-c.incoming:
+			if len(buf)+len(msg)+1 > maxPacketBytes {
+				c.send(buf)
+				buf = buf[:0]
+				timer.Reset(minFlush)
+			}
+			if len(buf) > 0 {
+				buf = append(buf, '\n')
+			}
+			buf = append(buf, msg...)
+		case q := <-c.quit:
+			// Drain incoming
+			for msg := range c.incoming {
+				if len(buf)+len(msg)+1 > maxPacketBytes {
+					c.send(buf)
+					buf = buf[:0]
+				}
+				if len(buf) > 0 {
+					buf = append(buf, '\n')
+				}
+				buf = append(buf, msg...)
+			}
+			if len(buf) > 0 {
+				c.send(buf)
+			}
+			q <- true
+			return
+		}
+	}
+}
+
+// Close closes the client's UDP connection. Afterwards, the client cannot be used. If the client is buffered,
+// Close first sends any buffered messages.
+func (c *Client) Close() error {
+	if c.buffered {
+		q := make(chan bool)
+		c.quit <- q
+		close(c.incoming)
+		<-q
+	}
+	return c.c.Close()
 }
 
 // ErrSamplingRate is returned by client.Count (or variants) when a bad sampling rate value is provided.
@@ -54,6 +154,10 @@ func (c *Client) Count(key string, delta, samplingRate float64) error {
 	default:
 		msg = append(msg, '@')
 		msg = strconv.AppendFloat(msg, samplingRate, 'f', -1, 64)
+	}
+	if c.buffered {
+		c.incoming <- msg
+		return nil
 	}
 	return c.send(msg)
 }
@@ -91,6 +195,10 @@ func (c *Client) Time(key string, duration time.Duration) error {
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, duration.Seconds()*1000, 'f', -1, 64)
 	msg = append(msg, []byte("|ms")...)
+	if c.buffered {
+		c.incoming <- msg
+		return nil
+	}
 	return c.send(msg)
 }
 
@@ -100,6 +208,10 @@ func (c *Client) Gauge(key string, value float64) error {
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, value, 'f', -1, 64)
 	msg = append(msg, []byte("|g")...)
+	if c.buffered {
+		c.incoming <- msg
+		return nil
+	}
 	return c.send(msg)
 }
 
@@ -110,5 +222,9 @@ func (c *Client) Set(key string, element []byte) error {
 	msg = append(msg, ':')
 	msg = append(msg, element...)
 	msg = append(msg, []byte("|s")...)
+	if c.buffered {
+		c.incoming <- msg
+		return nil
+	}
 	return c.send(msg)
 }

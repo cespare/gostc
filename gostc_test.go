@@ -50,7 +50,7 @@ func (s *TestServer) NextMessage() string {
 
 func MakeServerAndClient() (*TestServer, *Client) {
 	s := NewTestServer()
-	c, err := Dial(s.Addr)
+	c, err := NewClient(s.Addr)
 	if err != nil {
 		panic(err)
 	}
@@ -117,4 +117,36 @@ func TestSet(t *testing.T) {
 
 	client.Set("foo", []byte("hello"))
 	a.Assert(t, server.NextMessage(), a.Equals, "foo:hello|s")
+}
+
+func TestBufferedMaxSize(t *testing.T) {
+	s := NewTestServer()
+	// 5 ms is hopefully enough time to be processed. Kind of a fragile test, but simple.
+	c, err := NewBufferedClient(s.Addr, 100, 12, 5*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := byte(0); i < 4; i++ {
+		c.Set("a", []byte{'a' + i})
+	}
+	c.Close()
+	a.Assert(t, s.NextMessage(), a.Equals, "a:a|s\na:b|s")
+	a.Assert(t, s.NextMessage(), a.Equals, "a:c|s\na:d|s")
+}
+
+func TestBufferedMinFlush(t *testing.T) {
+	s := NewTestServer()
+	c, err := NewBufferedClient(s.Addr, 100, 100, 5*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := byte(0); i < 4; i++ {
+		c.Set("a", []byte{'a' + i})
+		if i == 1 {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	c.Close()
+	a.Assert(t, s.NextMessage(), a.Equals, "a:a|s\na:b|s")
+	a.Assert(t, s.NextMessage(), a.Equals, "a:c|s\na:d|s")
 }
