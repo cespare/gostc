@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cespare/a"
+	"github.com/cespare/asrt"
 )
 
 type TestServer struct {
@@ -74,25 +74,25 @@ func TestCount(t *testing.T) {
 	defer server.Close()
 
 	client.Count("foo", 3, 1)
-	a.Assert(t, server.NextMessage(), a.Equals, "foo:3|c")
+	asrt.Equal(t, server.NextMessage(), "foo:3|c")
 
 	client.Count("foo", 3, 0.5)
-	a.Assert(t, server.NextMessage(), a.Equals, "foo:3|c@0.5")
+	asrt.Equal(t, server.NextMessage(), "foo:3|c@0.5")
 
 	client.Count("blah", -123.456, 1)
-	a.Assert(t, server.NextMessage(), a.Equals, "blah:-123.456|c")
+	asrt.Equal(t, server.NextMessage(), "blah:-123.456|c")
 
 	client.Inc("incme")
-	a.Assert(t, server.NextMessage(), a.Equals, "incme:1|c")
+	asrt.Equal(t, server.NextMessage(), "incme:1|c")
 
 	randFloat = MakeNonRandom([]float64{0.6, 0.4})
 	client.CountProb("foo", 3, 0.5) // nothin
 	client.CountProb("bar", 3, 0.5)
-	a.Assert(t, server.NextMessage(), a.Equals, "bar:3|c@0.5")
+	asrt.Equal(t, server.NextMessage(), "bar:3|c@0.5")
 
 	client.IncProb("foo", 0.5)
 	client.IncProb("bar", 0.5)
-	a.Assert(t, server.NextMessage(), a.Equals, "bar:1|c@0.5")
+	asrt.Equal(t, server.NextMessage(), "bar:1|c@0.5")
 }
 
 func TestTime(t *testing.T) {
@@ -100,7 +100,7 @@ func TestTime(t *testing.T) {
 	defer server.Close()
 
 	client.Time("foo", 3*time.Second)
-	a.Assert(t, server.NextMessage(), a.Equals, "foo:3000|ms")
+	asrt.Equal(t, server.NextMessage(), "foo:3000|ms")
 }
 
 func TestGauge(t *testing.T) {
@@ -108,7 +108,7 @@ func TestGauge(t *testing.T) {
 	defer server.Close()
 
 	client.Gauge("foo", 123.456)
-	a.Assert(t, server.NextMessage(), a.Equals, "foo:123.456|g")
+	asrt.Equal(t, server.NextMessage(), "foo:123.456|g")
 }
 
 func TestSet(t *testing.T) {
@@ -116,7 +116,7 @@ func TestSet(t *testing.T) {
 	defer server.Close()
 
 	client.Set("foo", []byte("hello"))
-	a.Assert(t, server.NextMessage(), a.Equals, "foo:hello|s")
+	asrt.Equal(t, server.NextMessage(), "foo:hello|s")
 }
 
 func TestBufferedMaxSize(t *testing.T) {
@@ -130,8 +130,8 @@ func TestBufferedMaxSize(t *testing.T) {
 		c.Set("a", []byte{'a' + i})
 	}
 	c.Close()
-	a.Assert(t, s.NextMessage(), a.Equals, "a:a|s\na:b|s")
-	a.Assert(t, s.NextMessage(), a.Equals, "a:c|s\na:d|s")
+	asrt.Equal(t, s.NextMessage(), "a:a|s\na:b|s")
+	asrt.Equal(t, s.NextMessage(), "a:c|s\na:d|s")
 }
 
 func TestBufferedMinFlush(t *testing.T) {
@@ -147,6 +147,6 @@ func TestBufferedMinFlush(t *testing.T) {
 		}
 	}
 	c.Close()
-	a.Assert(t, s.NextMessage(), a.Equals, "a:a|s\na:b|s")
-	a.Assert(t, s.NextMessage(), a.Equals, "a:c|s\na:d|s")
+	asrt.Equal(t, s.NextMessage(), "a:a|s\na:b|s")
+	asrt.Equal(t, s.NextMessage(), "a:c|s\na:d|s")
 }
