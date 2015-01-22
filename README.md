@@ -1,5 +1,7 @@
 # gostc
 
+[![GoDoc](https://godoc.org/github.com/cespare/gostc?status.svg)](https://godoc.org/github.com/cespare/gostc)
+
 gostc is a Go [StatsD](https://github.com/etsy/statsd/)/[gost](https://github.com/cespare/gost/) client.
 
 ## Installation
@@ -24,5 +26,3 @@ t := time.Now()
 time.Sleep(time.Second)
 client.Time("blah", time.Since(t))
 ```
-
-See full package documentation on [godoc.org](http://godoc.org/github.com/cespare/gostc).
