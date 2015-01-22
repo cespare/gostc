@@ -139,7 +139,7 @@ func (c *Client) Close() error {
 }
 
 // ErrSamplingRate is returned by client.Count (or variants) when a bad sampling rate value is provided.
-var ErrSamplingRate = errors.New("Sampling rate must be in (0, 1]")
+var ErrSamplingRate = errors.New("sampling rate must be in (0, 1]")
 
 // Count submits a statsd count message with the given key, value, and sampling rate.
 func (c *Client) Count(key string, delta, samplingRate float64) error {
