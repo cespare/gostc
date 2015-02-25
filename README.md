@@ -13,7 +13,7 @@ gostc is a Go [StatsD](https://github.com/etsy/statsd/)/[gost](https://github.co
 Quick example:
 
 ``` go
-client, err := gostc.Dial("localhost:8125")
+client, err := gostc.NewClient("localhost:8125")
 if err != nil {
   panic(err)
 }

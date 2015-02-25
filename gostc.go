@@ -39,7 +39,7 @@ func NewClient(addr string) (*Client, error) {
 }
 
 // NewBufferedClient creates a client with the given UDP address that can buffer messages and sends them
-// together in patches (separated by newlines, per the statsd protocol). Messages are formatted and sent to a
+// together in batches (separated by newlines, per the statsd protocol). Messages are formatted and sent to a
 // single sending goroutine via a buffered channel. This has the effect of offloading the CPU and clock time
 // of sending the messages from the calling goroutine, as well as possibly increasing efficiency by reducing
 // the volume of UDP packets sent.
