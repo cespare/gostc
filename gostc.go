@@ -18,7 +18,9 @@ type Client struct {
 	c        io.WriteCloser
 	buffered bool
 
-	randFloat func() float64 // test hook
+	// test hooks
+	randFloat func() float64
+	flushHook func() // if non-nil, fired after flushing due to timeout
 
 	// These are only are used for buffered clients.
 	incoming chan []byte
@@ -108,6 +110,9 @@ func (c *Client) bufferAndSend(maxPacketBytes int, minFlush time.Duration) {
 		case <-timer.C:
 			if len(buf) > 0 {
 				c.send(buf)
+				if c.flushHook != nil {
+					c.flushHook()
+				}
 				buf = buf[:0]
 			}
 			timer.Reset(minFlush)
