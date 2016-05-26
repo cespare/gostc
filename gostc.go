@@ -1,6 +1,7 @@
 // Package gostc implemenents a StatsD/gost client.
 //
-// This package performs minimal input validation, leaving that to the gost server.
+// This package performs minimal input validation, leaving that to the gost
+// server.
 package gostc
 
 import (
@@ -16,7 +17,10 @@ import (
 type Client struct {
 	c        io.WriteCloser
 	buffered bool
-	// These are only are used for buffered clients
+
+	randFloat func() float64 // test hook
+
+	// These are only are used for buffered clients.
 	incoming chan []byte
 	quit     chan chan bool
 }
@@ -33,24 +37,29 @@ func NewClient(addr string) (*Client, error) {
 	}
 
 	client := &Client{
-		c: c,
+		c:         c,
+		randFloat: rand.Float64,
 	}
 	return client, nil
 }
 
-// NewBufferedClient creates a client with the given UDP address that can buffer messages and sends them
-// together in batches (separated by newlines, per the statsd protocol). Messages are formatted and sent to a
-// single sending goroutine via a buffered channel. This has the effect of offloading the CPU and clock time
-// of sending the messages from the calling goroutine, as well as possibly increasing efficiency by reducing
-// the volume of UDP packets sent.
+// NewBufferedClient creates a client with the given UDP address that can buffer
+// messages and sends them together in batches (separated by newlines, per the
+// statsd protocol). Messages are formatted and sent to a single sending
+// goroutine via a buffered channel. This has the effect of offloading the CPU
+// and clock time of sending the messages from the calling goroutine, as well as
+// possibly increasing efficiency by reducing the volume of UDP packets sent.
 //
-// A buffered Client may or may not change (improve, degrade) performance in your particular scenario. Default
-// to using a normal client (via NewClient) unless gostc performance is a measurable bottleneck, and then see
-// if a buffered client helps (and keep measuring).
+// A buffered Client may or may not change (improve, degrade) performance in
+// your particular scenario. Default to using a normal client (via NewClient)
+// unless gostc performance is a measurable bottleneck, and then see if a
+// buffered client helps (and keep measuring).
 //
-// The three parameters queueSize, maxPacketBytes, and minFlush tune the buffered channel size, maximum single
-// packet size, and minimum time between flushes. Message are buffered until maxPacketBytes is reached or
-// until some time as passed (no more than minFlush). Use NewDefaultBufferedClient for reasonable defaults.
+// The three parameters queueSize, maxPacketBytes, and minFlush tune the
+// buffered channel size, maximum single packet size, and minimum time between
+// flushes. Message are buffered until maxPacketBytes is reached or until some
+// time as passed (no more than minFlush). Use NewDefaultBufferedClient for
+// reasonable defaults.
 //
 // Note that a buffered client cannot report UDP errors (it will silently fail).
 func NewBufferedClient(addr string, queueSize int, maxPacketBytes int, minFlush time.Duration) (*Client, error) {
@@ -66,15 +75,22 @@ func NewBufferedClient(addr string, queueSize int, maxPacketBytes int, minFlush 
 }
 
 const (
-	// 100 * DefaultMaxPacketBytes = 10KB, as a lower bound on memory usage.
-	DefaultQueueSize = 100
-	// 1/10th of gost's default max, and 1k packets seem to generally work for Linux local UDP.
+	// DefaultQueueSize is the default value of queueSize for a buffered
+	// client. With a value of 10000, if we assume 50 byte messages, then
+	// we'll use 500KB of memory in the queue.
+	DefaultQueueSize = 10000
+	// DefaultMaxPacketBytes is the default value of maxPacketBytes for a
+	// buffered client. 1000 is used because it is 1/10th of gost's default
+	// max, and 1k packets seem to generally work for Linux local UDP.
 	DefaultMaxPacketBytes = 1000
-	DefaultMinFlush       = time.Second
+	// DefaultMinFlush is the default value of minFlush for a buffered
+	// client.
+	DefaultMinFlush = time.Second
 )
 
-// NewDefaultBufferedClient calls NewBufferedClient with tuning parameters queueSize, maxPacketBytes, and
-// minFlush set to DefaultQueueSize, DefaultMaxPacketBytes, and DefaultMinFlush, respectively.
+// NewDefaultBufferedClient calls NewBufferedClient with tuning parameters
+// queueSize, maxPacketBytes, and minFlush set to DefaultQueueSize,
+// DefaultMaxPacketBytes, and DefaultMinFlush, respectively.
 func NewDefaultBufferedClient(addr string) (*Client, error) {
 	return NewBufferedClient(addr, DefaultQueueSize, DefaultMaxPacketBytes, DefaultMinFlush)
 }
@@ -126,8 +142,8 @@ func (c *Client) bufferAndSend(maxPacketBytes int, minFlush time.Duration) {
 	}
 }
 
-// Close closes the client's UDP connection. Afterwards, the client cannot be used. If the client is buffered,
-// Close first sends any buffered messages.
+// Close closes the client's UDP connection. Afterwards, the client cannot be
+// used. If the client is buffered, Close first sends any buffered messages.
 func (c *Client) Close() error {
 	if c.buffered {
 		q := make(chan bool)
@@ -138,15 +154,17 @@ func (c *Client) Close() error {
 	return c.c.Close()
 }
 
-// ErrSamplingRate is returned by client.Count (or variants) when a bad sampling rate value is provided.
+// ErrSamplingRate is returned by client.Count (or variants) when a bad
+// sampling rate value is provided.
 var ErrSamplingRate = errors.New("sampling rate must be in (0, 1]")
 
-// Count submits a statsd count message with the given key, value, and sampling rate.
+// Count submits a statsd count message with the given key, value,
+// and sampling rate.
 func (c *Client) Count(key string, delta, samplingRate float64) error {
 	msg := []byte(key)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, delta, 'f', -1, 64)
-	msg = append(msg, []byte("|c")...)
+	msg = append(msg, "|c"...)
 	switch {
 	case samplingRate > 1 || samplingRate <= 0:
 		return ErrSamplingRate
@@ -162,12 +180,13 @@ func (c *Client) Count(key string, delta, samplingRate float64) error {
 	return c.send(msg)
 }
 
-// inc does count(key, 1, samplingRate). strconv's float formatting is actually quite (relatively) slow, so
-// special-casing 1 makes inc a lot faster than the more general Count.
+// inc does count(key, 1, samplingRate). strconv's float formatting is
+// relatively slow, so special-casing 1 makes inc a lot faster than the more
+// general Count.
 func (c *Client) inc(key string, p float64) error {
 	msg := make([]byte, len(key), len(key)+4)
 	copy(msg, key)
-	msg = append(msg, []byte(":1|c")...)
+	msg = append(msg, ":1|c"...)
 	if p != 1 {
 		msg = append(msg, '@')
 		msg = strconv.AppendFloat(msg, p, 'f', -1, 64)
@@ -184,14 +203,12 @@ func (c *Client) Inc(key string) error {
 	return c.inc(key, 1)
 }
 
-var randFloat = rand.Float64
-
 // CountProb counts (key, delta) with probability p in (0, 1].
 func (c *Client) CountProb(key string, delta, p float64) error {
 	if p > 1 || p <= 0 {
 		return ErrSamplingRate
 	}
-	if randFloat() >= p {
+	if c.randFloat() >= p {
 		return nil
 	}
 	return c.Count(key, delta, p)
@@ -202,7 +219,7 @@ func (c *Client) IncProb(key string, p float64) error {
 	if p > 1 || p <= 0 {
 		return ErrSamplingRate
 	}
-	if randFloat() >= p {
+	if c.randFloat() >= p {
 		return nil
 	}
 	return c.inc(key, p)
@@ -213,7 +230,7 @@ func (c *Client) Time(key string, duration time.Duration) error {
 	msg := []byte(key)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, duration.Seconds()*1000, 'f', -1, 64)
-	msg = append(msg, []byte("|ms")...)
+	msg = append(msg, "|ms"...)
 	if c.buffered {
 		c.incoming <- msg
 		return nil
@@ -226,7 +243,7 @@ func (c *Client) Gauge(key string, value float64) error {
 	msg := []byte(key)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, value, 'f', -1, 64)
-	msg = append(msg, []byte("|g")...)
+	msg = append(msg, "|g"...)
 	if c.buffered {
 		c.incoming <- msg
 		return nil
@@ -240,7 +257,7 @@ func (c *Client) Set(key string, element []byte) error {
 	copy(msg, key)
 	msg = append(msg, ':')
 	msg = append(msg, element...)
-	msg = append(msg, []byte("|s")...)
+	msg = append(msg, "|s"...)
 	if c.buffered {
 		c.incoming <- msg
 		return nil
