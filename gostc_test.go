@@ -124,6 +124,23 @@ func TestSet(t *testing.T) {
 	s.expect("foo:hello|s")
 }
 
+func TestPrefix(t *testing.T) {
+	s, c := newTestServerClient(t)
+	defer s.Close()
+	c = c.WithPrefix("pref")
+
+	c.Count("c", 123.456, 1)
+	s.expect("pref.c:123.456|c")
+	c.Inc("i")
+	s.expect("pref.i:1|c")
+	c.Time("t", time.Second)
+	s.expect("pref.t:1000|ms")
+	c.Gauge("g", 55)
+	s.expect("pref.g:55|g")
+	c.Set("s", []byte("v"))
+	s.expect("pref.s:v|s")
+}
+
 func TestBufferedMaxSize(t *testing.T) {
 	s := newTestServer(t)
 	c, err := NewBufferedClient(s.addr, 100, 12, time.Minute)

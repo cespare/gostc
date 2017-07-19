@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,6 +18,7 @@ import (
 type Client struct {
 	c        io.WriteCloser
 	buffered bool
+	prefix   string
 
 	// test hooks
 	randFloat func() float64
@@ -25,6 +27,19 @@ type Client struct {
 	// These are only are used for buffered clients.
 	incoming chan []byte
 	quit     chan chan bool
+}
+
+// WithPrefix creates a Client with a different prefix which is automatically
+// prepended to all messages. The new Client shares all its state with c
+// (so it has the same configuration settings and only one needs to be closed).
+func (c *Client) WithPrefix(prefix string) *Client {
+	if prefix != "" && !strings.HasSuffix(prefix, ".") {
+		prefix += "."
+	}
+
+	c1 := *c
+	c1.prefix = prefix
+	return &c1
 }
 
 // NewClient creates a client with the given UDP address.
@@ -166,7 +181,8 @@ var ErrSamplingRate = errors.New("sampling rate must be in (0, 1]")
 // Count submits a statsd count message with the given key, value,
 // and sampling rate.
 func (c *Client) Count(key string, delta, samplingRate float64) error {
-	msg := []byte(key)
+	msg := []byte(c.prefix)
+	msg = append(msg, key...)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, delta, 'f', -1, 64)
 	msg = append(msg, "|c"...)
@@ -188,8 +204,9 @@ func (c *Client) Count(key string, delta, samplingRate float64) error {
 // relatively slow, so special-casing 1 makes inc a lot faster than the more
 // general Count.
 func (c *Client) inc(key string, p float64) error {
-	msg := make([]byte, len(key), len(key)+4)
-	copy(msg, key)
+	msg := make([]byte, len(c.prefix)+len(key), len(c.prefix)+len(key)+4)
+	copy(msg, c.prefix)
+	copy(msg[len(c.prefix):], key)
 	msg = append(msg, ":1|c"...)
 	if p != 1 {
 		msg = append(msg, '@')
@@ -231,7 +248,8 @@ func (c *Client) IncProb(key string, p float64) error {
 
 // Time submits a statsd timer message.
 func (c *Client) Time(key string, duration time.Duration) error {
-	msg := []byte(key)
+	msg := []byte(c.prefix)
+	msg = append(msg, key...)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, duration.Seconds()*1000, 'f', -1, 64)
 	msg = append(msg, "|ms"...)
@@ -244,7 +262,8 @@ func (c *Client) Time(key string, duration time.Duration) error {
 
 // Gauge submits a statsd gauge message.
 func (c *Client) Gauge(key string, value float64) error {
-	msg := []byte(key)
+	msg := []byte(c.prefix)
+	msg = append(msg, key...)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, value, 'f', -1, 64)
 	msg = append(msg, "|g"...)
@@ -257,8 +276,9 @@ func (c *Client) Gauge(key string, value float64) error {
 
 // Set submits a statsd set message.
 func (c *Client) Set(key string, element []byte) error {
-	msg := make([]byte, len(key), len(key)+1+len(element)+2)
-	copy(msg, key)
+	msg := make([]byte, len(c.prefix)+len(key), len(c.prefix)+len(key)+1+len(element)+2)
+	copy(msg, c.prefix)
+	copy(msg[len(c.prefix):], key)
 	msg = append(msg, ':')
 	msg = append(msg, element...)
 	msg = append(msg, "|s"...)
