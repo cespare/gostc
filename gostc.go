@@ -170,11 +170,10 @@ func (c *Client) Count(key string, delta, samplingRate float64) error {
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, delta, 'f', -1, 64)
 	msg = append(msg, "|c"...)
-	switch {
-	case samplingRate > 1 || samplingRate <= 0:
+	if samplingRate > 1 || samplingRate <= 0 {
 		return ErrSamplingRate
-	case samplingRate == 1:
-	default:
+	}
+	if samplingRate != 1 {
 		msg = append(msg, '@')
 		msg = strconv.AppendFloat(msg, samplingRate, 'f', -1, 64)
 	}
