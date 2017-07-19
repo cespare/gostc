@@ -1,7 +1,6 @@
 package gostc
 
 import (
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"sync"
@@ -165,7 +164,7 @@ func TestBufferedMinFlush(t *testing.T) {
 type nopWriteCloser struct{}
 
 func (nopWriteCloser) Write(b []byte) (int, error) {
-	return ioutil.Discard.Write(b)
+	return len(b), nil
 }
 
 func (nopWriteCloser) Close() error {
