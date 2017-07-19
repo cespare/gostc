@@ -16,9 +16,9 @@ import (
 
 // A Client is a StatsD/gost client which has a UDP connection.
 type Client struct {
-	c        io.WriteCloser
-	buffered bool
-	prefix   string
+	c         io.WriteCloser
+	buffered  bool
+	namespace string // if non-empty, ends with .
 
 	// test hooks
 	randFloat func() float64
@@ -29,16 +29,21 @@ type Client struct {
 	quit     chan chan bool
 }
 
-// WithPrefix creates a Client with a different prefix which is automatically
+// WithNamespace creates a Client with a nested prefix that is automatically
 // prepended to all messages. The new Client shares all its state with c
 // (so it has the same configuration settings and only one needs to be closed).
-func (c *Client) WithPrefix(prefix string) *Client {
-	if prefix != "" && !strings.HasSuffix(prefix, ".") {
-		prefix += "."
+// The namespace cannot be empty.
+func (c *Client) WithNamespace(ns string) *Client {
+	if ns == "" {
+		panic("gostc: WithNamespace called with empty ns")
+	}
+	ns = c.namespace + ns
+	if !strings.HasSuffix(ns, ".") {
+		ns += "."
 	}
 
 	c1 := *c
-	c1.prefix = prefix
+	c1.namespace = ns
 	return &c1
 }
 
@@ -181,7 +186,7 @@ var ErrSamplingRate = errors.New("sampling rate must be in (0, 1]")
 // Count submits a statsd count message with the given key, value,
 // and sampling rate.
 func (c *Client) Count(key string, delta, samplingRate float64) error {
-	msg := []byte(c.prefix)
+	msg := []byte(c.namespace)
 	msg = append(msg, key...)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, delta, 'f', -1, 64)
@@ -204,9 +209,9 @@ func (c *Client) Count(key string, delta, samplingRate float64) error {
 // relatively slow, so special-casing 1 makes inc a lot faster than the more
 // general Count.
 func (c *Client) inc(key string, p float64) error {
-	msg := make([]byte, len(c.prefix)+len(key), len(c.prefix)+len(key)+4)
-	copy(msg, c.prefix)
-	copy(msg[len(c.prefix):], key)
+	msg := make([]byte, len(c.namespace)+len(key), len(c.namespace)+len(key)+4)
+	copy(msg, c.namespace)
+	copy(msg[len(c.namespace):], key)
 	msg = append(msg, ":1|c"...)
 	if p != 1 {
 		msg = append(msg, '@')
@@ -248,7 +253,7 @@ func (c *Client) IncProb(key string, p float64) error {
 
 // Time submits a statsd timer message.
 func (c *Client) Time(key string, duration time.Duration) error {
-	msg := []byte(c.prefix)
+	msg := []byte(c.namespace)
 	msg = append(msg, key...)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, duration.Seconds()*1000, 'f', -1, 64)
@@ -262,7 +267,7 @@ func (c *Client) Time(key string, duration time.Duration) error {
 
 // Gauge submits a statsd gauge message.
 func (c *Client) Gauge(key string, value float64) error {
-	msg := []byte(c.prefix)
+	msg := []byte(c.namespace)
 	msg = append(msg, key...)
 	msg = append(msg, ':')
 	msg = strconv.AppendFloat(msg, value, 'f', -1, 64)
@@ -276,9 +281,9 @@ func (c *Client) Gauge(key string, value float64) error {
 
 // Set submits a statsd set message.
 func (c *Client) Set(key string, element []byte) error {
-	msg := make([]byte, len(c.prefix)+len(key), len(c.prefix)+len(key)+1+len(element)+2)
-	copy(msg, c.prefix)
-	copy(msg[len(c.prefix):], key)
+	msg := make([]byte, len(c.namespace)+len(key), len(c.namespace)+len(key)+1+len(element)+2)
+	copy(msg, c.namespace)
+	copy(msg[len(c.namespace):], key)
 	msg = append(msg, ':')
 	msg = append(msg, element...)
 	msg = append(msg, "|s"...)
