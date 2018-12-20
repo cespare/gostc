@@ -77,14 +77,14 @@ func NewClient(addr string) (*Client, error) {
 // unless gostc performance is a measurable bottleneck, and then see if a
 // buffered client helps (and keep measuring).
 //
-// The three parameters queueSize, maxPacketBytes, and minFlush tune the
-// buffered channel size, maximum single packet size, and minimum time between
-// flushes. Message are buffered until maxPacketBytes is reached or until some
-// time as passed (no more than minFlush). Use NewDefaultBufferedClient for
-// reasonable defaults.
+// The three parameters queueSize, maxPacketBytes, and flushDelay tune the
+// buffered channel size, maximum single packet size, and the flush delay.
+// Messages are buffered until maxPacketBytes is reached or until flushDelay
+// time has passed since the first message was buffered. Use
+// NewDefaultBufferedClient for reasonable defaults.
 //
 // Note that a buffered client cannot report UDP errors (it will silently fail).
-func NewBufferedClient(addr string, queueSize int, maxPacketBytes int, minFlush time.Duration) (*Client, error) {
+func NewBufferedClient(addr string, queueSize int, maxPacketBytes int, flushDelay time.Duration) (*Client, error) {
 	c, err := NewClient(addr)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func NewBufferedClient(addr string, queueSize int, maxPacketBytes int, minFlush 
 	c.buffered = true
 	c.incoming = make(chan []byte, queueSize)
 	c.quit = make(chan chan bool)
-	go c.bufferAndSend(maxPacketBytes, minFlush)
+	go c.bufferAndSend(maxPacketBytes, flushDelay)
 	return c, nil
 }
 
@@ -105,16 +105,16 @@ const (
 	// buffered client. 1000 is used because it is 1/10th of gost's default
 	// max, and 1k packets seem to generally work for Linux local UDP.
 	DefaultMaxPacketBytes = 1000
-	// DefaultMinFlush is the default value of minFlush for a buffered
+	// DefaultFlushDelay is the default value of flushDelay for a buffered
 	// client.
-	DefaultMinFlush = time.Second
+	DefaultFlushDelay = time.Second
 )
 
 // NewDefaultBufferedClient calls NewBufferedClient with tuning parameters
-// queueSize, maxPacketBytes, and minFlush set to DefaultQueueSize,
-// DefaultMaxPacketBytes, and DefaultMinFlush, respectively.
+// queueSize, maxPacketBytes, and flashDelay set to DefaultQueueSize,
+// DefaultMaxPacketBytes, and DefaultFlushDelay, respectively.
 func NewDefaultBufferedClient(addr string) (*Client, error) {
-	return NewBufferedClient(addr, DefaultQueueSize, DefaultMaxPacketBytes, DefaultMinFlush)
+	return NewBufferedClient(addr, DefaultQueueSize, DefaultMaxPacketBytes, DefaultFlushDelay)
 }
 
 func (c *Client) send(b []byte) error {
@@ -122,8 +122,10 @@ func (c *Client) send(b []byte) error {
 	return err
 }
 
-func (c *Client) bufferAndSend(maxPacketBytes int, minFlush time.Duration) {
-	timer := time.NewTimer(minFlush)
+func (c *Client) bufferAndSend(maxPacketBytes int, flushDelay time.Duration) {
+	// This timer is stopped whenever len(buf) == 0.
+	timer := time.NewTimer(0)
+	<-timer.C
 	buf := make([]byte, 0, maxPacketBytes)
 	for {
 		select {
@@ -135,14 +137,17 @@ func (c *Client) bufferAndSend(maxPacketBytes int, minFlush time.Duration) {
 				}
 				buf = buf[:0]
 			}
-			timer.Reset(minFlush)
 		case msg := <-c.incoming:
 			if len(buf)+len(msg)+1 > maxPacketBytes {
 				c.send(buf)
 				buf = buf[:0]
-				timer.Reset(minFlush)
+				if !timer.Stop() {
+					<-timer.C
+				}
 			}
-			if len(buf) > 0 {
+			if len(buf) == 0 {
+				timer.Reset(flushDelay)
+			} else {
 				buf = append(buf, '\n')
 			}
 			buf = append(buf, msg...)
