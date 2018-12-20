@@ -3,7 +3,6 @@ package gostc
 import (
 	"math/rand"
 	"net"
-	"sync"
 	"testing"
 	"time"
 )
@@ -159,23 +158,15 @@ func TestBufferedMaxSize(t *testing.T) {
 	s.expect("a:c|s\na:d|s")
 }
 
-func TestBufferedMinFlush(t *testing.T) {
+func TestBufferedFlushDuration(t *testing.T) {
 	s := newTestServer(t)
-	c, err := NewBufferedClient(s.addr, 100, 100, 3*time.Millisecond)
+	c, err := NewBufferedClient(s.addr, 100, 100, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var once sync.Once
-	ch := make(chan struct{})
-	// Assigning flushHook here isn't racy because the the bufferAndSend
-	// goroutine doesn't access flushHook unless there are messages in its
-	// buffer, and we haven't sent any.
-	c.flushHook = func() { once.Do(func() { close(ch) }) }
 	for i := byte(0); i < 4; i++ {
 		c.Set("a", []byte{'a' + i})
-		if i == 1 {
-			<-ch // wait for flush
-		}
+		time.Sleep(7*time.Millisecond)
 	}
 	c.Close()
 	s.expect("a:a|s\na:b|s")
