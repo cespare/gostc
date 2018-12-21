@@ -80,7 +80,7 @@ func NewClient(addr string) (*Client, error) {
 // The three parameters queueSize, maxPacketBytes, and flushDelay tune the
 // buffered channel size, maximum single packet size, and the flush delay.
 // Messages are buffered until maxPacketBytes is reached or until flushDelay
-// time passed since first message was buffered. Use NewDefaultBufferedClient
+// time has passed since the first message was buffered. Use NewDefaultBufferedClient
 // for reasonable defaults.
 //
 // Note that a buffered client cannot report UDP errors (it will silently fail).
@@ -123,7 +123,9 @@ func (c *Client) send(b []byte) error {
 }
 
 func (c *Client) bufferAndSend(maxPacketBytes int, flushDelay time.Duration) {
-	timer := time.NewTimer(flushDelay)
+	// This timer is stopped whenever len(buf) == 0.
+	timer := time.NewTimer(0)
+	<-timer.C
 	buf := make([]byte, 0, maxPacketBytes)
 	for {
 		select {
@@ -139,12 +141,14 @@ func (c *Client) bufferAndSend(maxPacketBytes int, flushDelay time.Duration) {
 			if len(buf)+len(msg)+1 > maxPacketBytes {
 				c.send(buf)
 				buf = buf[:0]
-				timer.Stop()
+				if !timer.Stop() {
+					<-timer.C
+				}
 			}
-			if len(buf) > 0 {
-				buf = append(buf, '\n')
-			} else {
+			if len(buf) == 0 {
 				timer.Reset(flushDelay)
+			} else {
+				buf = append(buf, '\n')
 			}
 			buf = append(buf, msg...)
 		case q := <-c.quit:
