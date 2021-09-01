@@ -1,6 +1,6 @@
 # gostc
 
-[![GoDoc](https://godoc.org/github.com/cespare/gostc?status.svg)](https://godoc.org/github.com/cespare/gostc)
+[![Go Reference](https://pkg.go.dev/badge/github.com/cespare/gostc.svg)](https://pkg.go.dev/github.com/cespare/gostc)
 
 gostc is a Go [StatsD](https://github.com/etsy/statsd/)/[gost](https://github.com/cespare/gost/) client.
 
